@@ -39,10 +39,10 @@ void enc1ReadA()
   
   
   if (readPinFast(enc1PinB) == 0) {
-    ++enc1Ticks;
+    --enc1Ticks;
   }
   else{
-    --enc1Ticks;
+    ++enc1Ticks;
 }
 
 //Serial.print(enclTicks);
