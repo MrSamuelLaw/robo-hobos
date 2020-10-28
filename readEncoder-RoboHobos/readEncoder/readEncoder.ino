@@ -27,7 +27,7 @@ void loop() {
   double enc1Angle = enc1Ticks / 5.688;
 
   // Print encoder positions
-  Serial.print("Enc-1: "); Serial.println(enc1Angle);
+  //Serial.print("Enc-1: "); Serial.println(enc1Angle);
 }
 
 void enc1ReadA()
@@ -45,5 +45,5 @@ void enc1ReadA()
     ++enc1Ticks;
 }
 
-//Serial.print(enclTicks);
+Serial.print(readPinFast(enc1PinB));
 }
