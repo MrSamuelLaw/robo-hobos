@@ -2,15 +2,16 @@
 #include <Encoder.h>
 
 // ============= define encoders =============
-Encoder right_encoder(2, 3);
-Encoder left_encoder(5, 6);
+Encoder right_encoder(20, 21);
+Encoder left_encoder(18, 19);
+
 long right_old_pos{0};
 long left_old_pos{0};
 long right_new_pos{0};
 long left_new_pos{0};
 double left_deg{0};
 double right_deg{0};
-constexpr long CPR_left{250};
+constexpr long CPR_left{1000};
 constexpr long CPR_right{1000};
 
 // ================== setup ==================
@@ -30,8 +31,8 @@ void loop() {
     left_old_pos = left_new_pos;
     right_old_pos = right_new_pos;
     // print out the angles
-    left_deg = (double)(360*left_new_pos/CPR_left);
-    right_deg = (double)(360*right_new_pos/CPR_right);
+    left_deg = (double)(-360*left_new_pos/CPR_left);
+    right_deg = (double)(-360*right_new_pos/CPR_right);
     Serial.print("left angle = ");
     Serial.println(left_deg);
     Serial.print("right angle = ");
