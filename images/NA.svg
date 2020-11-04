@@ -26,7 +26,7 @@
      inkscape:pageopacity="0.0"
      inkscape:pageshadow="2"
      inkscape:zoom="1.979899"
-     inkscape:cx="103.32378"
+     inkscape:cx="18.976043"
      inkscape:cy="147.04051"
      inkscape:document-units="mm"
      inkscape:current-layer="layer1"
@@ -79,7 +79,7 @@
          id="tspan27"
          x="118.68456"
          y="101.35956"
-         style="font-weight:normal;font-size:5.64444447px;stroke-width:0.26458332">A1</tspan></text>
+         style="font-weight:normal;font-size:5.64444447px;stroke-width:0.26458332">N1</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12.69999981px;line-height:1.25;font-family:'Avenir Next LT Pro';-inkscape-font-specification:'Avenir Next LT Pro Bold';letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
@@ -90,7 +90,7 @@
          id="tspan27-2"
          x="111.47387"
          y="73.648735"
-         style="font-weight:normal;font-size:5.64444447px;stroke-width:0.26458332">B1</tspan></text>
+         style="font-weight:normal;font-size:5.64444447px;stroke-width:0.26458332">A1</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12.69999981px;line-height:1.25;font-family:'Avenir Next LT Pro';-inkscape-font-specification:'Avenir Next LT Pro Bold';letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
@@ -101,7 +101,7 @@
          id="tspan27-8"
          x="82.36969"
          y="61.175514"
-         style="font-weight:normal;font-size:5.64444447px;stroke-width:0.26458332">A2</tspan></text>
+         style="font-weight:normal;font-size:5.64444447px;stroke-width:0.26458332">N2</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:12.69999981px;line-height:1.25;font-family:'Avenir Next LT Pro';-inkscape-font-specification:'Avenir Next LT Pro Bold';letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.26458332"
@@ -141,30 +141,35 @@
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:8.82595253px;line-height:1.25;font-family:'Avenir Next LT Pro';-inkscape-font-specification:'Avenir Next LT Pro Bold';letter-spacing:0px;word-spacing:0px;baseline-shift:baseline;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.19459999"
-       x="102.6507"
-       y="96.558327"
+       x="104.4613"
+       y="91.814125"
        id="text911"
        transform="scale(0.95949336,1.0422167)"><tspan
          sodipodi:role="line"
          id="tspan909"
-         x="102.6507"
-         y="96.558327"
-         style="font-weight:normal;baseline-shift:baseline;stroke-width:0.19459999">𝛼<tspan
-   style="font-size:3.63253355px;baseline-shift:sub;stroke-width:0.19459999"
-   id="tspan913">2</tspan></tspan></text>
+         x="104.4613"
+         y="91.814125"
+         style="font-weight:normal;baseline-shift:baseline;stroke-width:0.19459999"><tspan
+           style="font-size:3.63253355px;baseline-shift:sub;stroke-width:0.19459999"
+           id="tspan913">q1</tspan></tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:bold;font-stretch:normal;font-size:8.82595253px;line-height:1.25;font-family:'Avenir Next LT Pro';-inkscape-font-specification:'Avenir Next LT Pro Bold';letter-spacing:0px;word-spacing:0px;baseline-shift:baseline;fill:#000000;fill-opacity:1;stroke:none;stroke-width:0.19459999"
-       x="81.527618"
-       y="84.321709"
+       x="80.831238"
+       y="82.783051"
        id="text911-9"
        transform="scale(0.95949336,1.0422167)"><tspan
          sodipodi:role="line"
          id="tspan909-8"
-         x="81.527618"
-         y="84.321709"
-         style="font-weight:normal;baseline-shift:baseline;stroke-width:0.19459999">𝛼<tspan
-   style="font-size:3.63253355px;baseline-shift:sub;stroke-width:0.19459999"
-   id="tspan913-2">2</tspan></tspan></text>
+         x="80.831238"
+         y="82.783051"
+         style="font-weight:normal;baseline-shift:baseline;stroke-width:0.19459999"><tspan
+           style="font-size:3.63253355px;baseline-shift:sub;stroke-width:0.19459999"
+           id="tspan913-2">q1</tspan></tspan><tspan
+         sodipodi:role="line"
+         x="80.831238"
+         y="93.815491"
+         style="font-weight:normal;baseline-shift:baseline;stroke-width:0.19459999"
+         id="tspan832" /></text>
   </g>
 </svg>
