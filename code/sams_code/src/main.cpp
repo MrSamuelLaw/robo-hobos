@@ -21,12 +21,12 @@ class Motor{
                         the motor is asked to turn counter clockwise.
     CLOCKWISE_: HIGH or LOW, this defines what the dir_pin is set to when the
                 motor is asked to go clockwise.
+    enc_pin_A: Pin that encoder channel A is plugged into (must be an interrupt pin)
+    enc_pin_B: Pin that encoder challen B is plugged into (must be an interrupt pin)
     encoder_dir_: Set to either 1 or -1, used to correct the reading for the angle.
                   If a counter clockwise rotation causes the encoder to read negative,
                   flip the value from -1 to 1 or 1 to -1 depending on what it is
                   currently set to.
-    enc_pin_A: Pin that encoder channel A is plugged into (must be an interrupt pin)
-    enc_pin_B: Pin that encoder challen B is plugged into (must be an interrupt pin)
   */
 
   // ============================= constructor =============================
@@ -34,8 +34,8 @@ class Motor{
   Motor(int pwm_pin, int brk_pin, int dir_pin,
           uint8_t COUNTER_CLOCKWISE_, uint8_t CLOCKWISE_,
           int enc_pin_A, int enc_pin_B, int encoder_dir_)
-  // set default values
-  :m_encoder{Encoder(enc_pin_A, enc_pin_B)}
+    // set default values
+    :m_encoder{Encoder(enc_pin_A, enc_pin_B)}
   {
     // set the encoder corrector
     encoder_dir = encoder_dir_;
@@ -61,6 +61,13 @@ class Motor{
   }
 
   // ============================== variables ==============================
+  // safe to playwith controller variables
+  float bodyA_mass{0.03190818};    // kg
+  float bodyA_izz{3.98e-06};     // kg*m^2
+  float bodyA_length{0.02162775};  // m
+  long kp{80000};                    // proportional gain
+  long kv{sqrt(kp)*2.828427};        // derivative gain
+
   // pin variables
   int m_pwm_pin{0};
   int m_brk_pin{0};
@@ -81,13 +88,6 @@ class Motor{
   double Tau{0};         // Nm
   double Vemf{0};        // Volts
   double Vs{0};          // Volts
-  long kp{80000};                    // proportional gain
-  long kv{sqrt(kp)*2.828427};        // derivative gain
-
-  // controller constants
-  float bodyA_mass{0.03190818};    // kg
-  float bodyA_izz{3.98e-06};     // kg*m^2
-  float bodyA_length{0.02162775};  // m
 
   // motor/encoder constants
   int CPR{1000};
@@ -112,7 +112,7 @@ class Motor{
   // returns the current angle of the motor in radians
   double angle(){
     // returns the current angle in radians
-    return (double)(2*M_PI*m_encoder.read()/CPR);
+    return (double)(encoder_dir*2*M_PI*m_encoder.read()/CPR);
   }
 
 
@@ -165,6 +165,7 @@ class Motor{
     // map the voltage
     Vs = map(Vs, 0, 12, 0, 255);
     // Serial.println(Vs);
+
     return Vs;
   }
 
@@ -177,9 +178,6 @@ class Motor{
 //  | | |_ | |/ _ \| '_ \ / _` | / __|
 //  | |__| | | (_) | |_) | (_| | \__ \
 //   \_____|_|\___/|_.__/ \__,_|_|___/
-
-// controller variables
-
 
 // time variables
 long new_time{0};
