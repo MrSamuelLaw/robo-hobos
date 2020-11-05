@@ -13,20 +13,33 @@ class Motor{
   /*
   This is a class meant to implement a PD or operational space controller for a motor
   connected to a robot arm.
-  1. For the initial setup, set the encoder pins such that as the
-     motor spindle turns counter clockwise, the encoder reads a positive angle.
-
-  2. Once the encoder is reading a positive angle for a counter clockwise rotation,
-     run a test with the COUNTER_CLOCKWISE and CLOCKWISE values set as the are.
-     If the motor starts to spin the wrong way, swap the COUNTER_CLOCKWISE and
-     CLOCKWISE assignments.
+  args:
+    pwm_pin: Pin number that controls the voltage supplied to the motor.
+    brk_pin: Pin number that cuts off the motor (LOW means the motor turns).
+    dir_pin: Pin number that controls the direction of the pin.
+    COUNTER_CLOCKWISE_: HIGH or LOW, this defines what the dir_pin is set to when
+                        the motor is asked to turn counter clockwise.
+    CLOCKWISE_: HIGH or LOW, this defines what the dir_pin is set to when the
+                motor is asked to go clockwise.
+    encoder_dir_: Set to either 1 or -1, used to correct the reading for the angle.
+                  If a counter clockwise rotation causes the encoder to read negative,
+                  flip the value from -1 to 1 or 1 to -1 depending on what it is
+                  currently set to.
+    enc_pin_A: Pin that encoder channel A is plugged into (must be an interrupt pin)
+    enc_pin_B: Pin that encoder challen B is plugged into (must be an interrupt pin)
   */
 
   // ============================= constructor =============================
 
-  Motor(int pwm_pin, int brk_pin, int dir_pin, int enc_pin_A, int enc_pin_B)
-    :m_encoder{Encoder(enc_pin_A, enc_pin_B)}
+  Motor(int pwm_pin, int brk_pin, int dir_pin,
+          uint8_t COUNTER_CLOCKWISE_, uint8_t CLOCKWISE_,
+          int enc_pin_A, int enc_pin_B, int encoder_dir_)
+  // set default values
+  :m_encoder{Encoder(enc_pin_A, enc_pin_B)}
   {
+    // set the encoder corrector
+    encoder_dir = encoder_dir_;
+
     // set motor pins numbers
     m_pwm_pin = pwm_pin;
     m_brk_pin = brk_pin;
@@ -41,8 +54,8 @@ class Motor{
     analogWrite(m_pwm_pin, 0);
     digitalWrite(m_brk_pin, LOW);
     // if it turns clockwise by mistake, flip the HIGH and LOW assignments
-    COUNTER_CLOCKWISE = HIGH;
-    CLOCKWISE = LOW;
+    COUNTER_CLOCKWISE = COUNTER_CLOCKWISE_;
+    CLOCKWISE = CLOCKWISE_;
     digitalWrite(m_dir_pin, COUNTER_CLOCKWISE);
 
   }
@@ -55,6 +68,7 @@ class Motor{
   int m_dir_state_pin{0};
   uint8_t CLOCKWISE{LOW};
   uint8_t COUNTER_CLOCKWISE{HIGH};
+  int encoder_dir{1};
 
   // encoder variables
   Encoder m_encoder;
@@ -174,7 +188,8 @@ long dt{0};
 float V{0};
 
 // define motors
-Motor right_motor(3, 9, 12, 20, 21);
+Motor right_motor(3, 9, 12, HIGH, LOW,
+                  20, 21, 1);
 
 //                    _       _                _____      _
 //      /\           | |     (_)              / ____|    | |
@@ -186,6 +201,7 @@ Motor right_motor(3, 9, 12, 20, 21);
 //                                                                 |_|
 
 void setup(){
+  // start the coms
   Serial.begin(9600);
   // set desired angle
   right_motor.q_desired = 12.5;
@@ -214,160 +230,3 @@ void loop(){
   // overwrite the old time
   old_time = new_time;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// // ============ define constants =============
-// double  ki = (10.52 - 0.108605472*4.5)/45;
-// double kt = (0.980665/2.6666666660);
-// float R = 4.5;
-// long kv = 25000;
-// long kp = sqrt(kv);
-
-// // ============= define link properties =============
-// float bodyA_mass{0.03190818};    // kg
-// float bodyA_izz{3.98e-06};     // kg*m^2
-// float bodyA_length{0.02162775};  // m
-
-// // ============= define right motor variables =============
-// Encoder encoder_right(20, 21);
-// long old_pos_right{0};
-// long new_pos_right{0};
-// double ang_right{0};
-// double omega_right{0};
-
-// constexpr long CPR_right{1000};
-// int motor_pwm_right{3};
-// int motor_brk_right{9};
-// int motor_dir_right{12};
-// bool motor_dir_bool_right{false};
-
-// // define variables for torque calculations
-// double desired_right{3};  // radians
-// double Vemf_right{0};
-// double Vs_right{0};
-// double Tau_right{0};
-// double U_right{0};
-
-// // ============== setup clocks ===============
-// unsigned long old_time{0};
-// unsigned long new_time{0};
-// unsigned long dt{0};
-
-// // ============== utility funcs ==============
-// double ticks_to_rad(int ticks){
-//   // converts ticks to radians
-//   return (double)(-2*M_PI*ticks/CPR_right);
-// }
-
-// void toggle_direction_right(){
-//   // flips the direction of the right motor
-//   if (motor_dir_bool_right) {
-//     motor_dir_bool_right = false;
-//     digitalWrite(motor_dir_right, HIGH);
-//   }
-//   else {
-//     motor_dir_bool_right = true;
-//     digitalWrite(motor_dir_right, LOW);
-//   }
-
-// }
-
-// void toggle_direction_left(){
-//   // flips the direction of the left motor
-
-// }
-
-
-
-// // ================== setup ==================
-// void setup() {
-//   // start the coms
-//   Serial.begin(9600);
-
-//   // define outputs
-//   pinMode(motor_pwm_right, OUTPUT);
-//   pinMode(motor_brk_right, OUTPUT);
-//   pinMode(motor_dir_right, OUTPUT);
-
-//   // establish the connection
-//   digitalWrite(motor_dir_right, LOW);
-//   digitalWrite(motor_brk_right, LOW);
-//   analogWrite(motor_pwm_right, 50);
-
-// }
-
-// // ================== loop ===================
-// void loop() {
-//   // read the encoder values
-//   new_pos_right = encoder_right.read();
-
-//   // check if any new values
-//   if (new_pos_right != old_pos_right) {
-//     // reset the clock
-//     new_time = millis();
-
-//     // calculate dt
-//     dt = new_time - old_time;
-
-//     // calculate angles in radians
-//     float rad_new = ticks_to_rad(new_pos_right);
-//     float rad_old = ticks_to_rad(old_pos_right);
-//     Serial.print("q1 = ");
-//     Serial.println(rad_new);
-
-//     // calculate omega
-//     omega_right = (rad_new - rad_old)/dt;
-
-//     // calculate back voltage
-//     Vemf_right = ki*omega_right;
-
-//     // calculate controller output
-//     U_right = kv*(-omega_right) + kv*(desired_right - rad_new);
-//     Serial.print("U = ");
-//     Serial.println(U_right);
-
-//     // calculate the torqu3
-//     Tau_right = ((bodyA_length*bodyA_length*bodyA_mass) + bodyA_izz)*U_right;
-//     Serial.print("Tau = ");
-//     Serial.println(Tau_right);
-
-//     // calculate the desired voltage assuming Tau known
-//     Vs_right = (Tau_right*R/kt) + Vemf_right;
-//     Serial.print("Vs = ");
-//     Serial.println(Vs_right);
-
-//     // flip the direction if Vs is negative
-//     if (Vs_right < 0) {
-//       toggle_direction_right();
-//       Vs_right = -1*Vs_right;
-//     }
-
-//     // constrain the voltage
-//     Vs_right = constrain(Vs_right, 0, 12);
-//     Vs_right = map(Vs_right, 0, 12, 0, 255);
-
-//     // output it to the motor
-//     analogWrite(motor_pwm_right, Vs_right);
-
-//     // update the values
-//     old_pos_right = new_pos_right;
-//     old_time = new_time;
-//   }
-// }
-
