@@ -35,16 +35,15 @@ class Motor{
           uint8_t COUNTER_CLOCKWISE_, uint8_t CLOCKWISE_,
           int enc_pin_A, int enc_pin_B, int encoder_dir_)
     // set default values
-    :m_encoder{Encoder(enc_pin_A, enc_pin_B)}
+    :m_encoder{Encoder(enc_pin_A, enc_pin_B)},  // instantiates the encoder
+     encoder_dir{encoder_dir_},                // sets the encoder corrector
+     m_pwm_pin{pwm_pin},                       // sets the motor pwm pin
+     m_brk_pin{brk_pin},                       // sets the motor brk pin
+     m_dir_pin{dir_pin},                       // sets the motor pwm pin
+     COUNTER_CLOCKWISE{COUNTER_CLOCKWISE_},     // sets the CCW variable
+     CLOCKWISE{CLOCKWISE_}                     // sets the CC variable
+    // perform default function calls
   {
-    // set the encoder corrector
-    encoder_dir = encoder_dir_;
-
-    // set motor pins numbers
-    m_pwm_pin = pwm_pin;
-    m_brk_pin = brk_pin;
-    m_dir_pin = dir_pin;
-
     // set the pin modes
     pinMode(m_pwm_pin, OUTPUT);
     pinMode(m_brk_pin, OUTPUT);
@@ -54,23 +53,20 @@ class Motor{
     analogWrite(m_pwm_pin, 0);
     digitalWrite(m_brk_pin, LOW);
     // if it turns clockwise by mistake, flip the HIGH and LOW assignments
-    COUNTER_CLOCKWISE = COUNTER_CLOCKWISE_;
-    CLOCKWISE = CLOCKWISE_;
     digitalWrite(m_dir_pin, COUNTER_CLOCKWISE);
-
   }
 
   // ============================== variables ==============================
   // safe to playwith controller variables
-  float bodyA_mass{0.03190818};    // kg
-  float bodyA_izz{3.98e-06};     // kg*m^2
-  float bodyA_length{0.02162775};  // m
+  float bodyA_mass{0.03190818};      // kg
+  float bodyA_izz{3.98e-06};         // kg*m^2
+  float bodyA_length{0.02162775};    // m
   long kp{80000};                    // proportional gain
   long kv{sqrt(kp)*2.828427};        // derivative gain
 
   // pin variables
   int m_pwm_pin{0};
-  int m_brk_pin{0};
+  const int m_brk_pin;
   int m_dir_pin{0};
   int m_dir_state_pin{0};
   uint8_t CLOCKWISE{LOW};
@@ -111,10 +107,15 @@ class Motor{
 
   // returns the current angle of the motor in radians
   double angle(){
-    // returns the current angle in radians
     return (double)(encoder_dir*2*M_PI*m_encoder.read()/CPR);
   }
 
+  // kills the motor in the event that the probe is tripped, preventint
+  // damage to the robot. Is completely optional, and should be set in the
+  // setup loop of the ardino code using a lambda
+  static void probe(int probe_pin){
+    digitalWrite(probe_pin, HIGH);
+  }
 
   // updates the angles to where q1 is always the most recent angle
   void update_angles(){
@@ -123,6 +124,7 @@ class Motor{
     q[1] = angle();
   }
 
+  // =============================== controller ================================
 
   // implements the controller
   double calculate_Vs(long millis){
@@ -201,8 +203,19 @@ Motor right_motor(3, 9, 12, HIGH, LOW,
 void setup(){
   // start the coms
   Serial.begin(9600);
+
+  // setup the probe that trips if the robot is going to break something
+  pinMode(2, INPUT);
+  attachInterrupt(
+    digitalPinToInterrupt(2),
+    [](){Motor::probe(right_motor.m_brk_pin);},
+    HIGH
+  );
+
   // set desired angle
   right_motor.q_desired = 12.5;
+
+  // digitalWrite(right_motor.m_brk_pin, HIGH);
 }
 
 //                    _       _               _
