@@ -8,6 +8,9 @@
 #define enc1Interrupt 2    //Interrupt pin number
 #define enc1PinA      21   //Arduino pin number corresponding to interrupt pin
 #define enc1PinB      31   //Digital pin number // Do not use pins 0, 1, 3, 8, 9, 11, 12, 13
+#define MotorRpwm     3
+#define MotorRbrk     9
+#define MotorRdir     12
 
 // A variable should be declared volatile whenever its value may change
 // at any time-without any action being taken by the code found nearby.
@@ -15,6 +18,9 @@ volatile long enc1Ticks = 0;  // Variable used to store encoder ticks
 
 void setup() {
   Serial.begin(9600); // Sets baud rate for data transmission to the PC.
+  pinMode(MotorRpwm,OUTPUT);
+  pinMode(MotorRbrk,OUTPUT);
+  pinMode(MotorRdir,OUTPUT);
 
   // Set up Encoder-1
   pinMode(enc1PinA, INPUT);      // sets Encoder-1 pin A as input
@@ -28,6 +34,10 @@ void loop() {
 
   // Print encoder positions
   Serial.print("Enc-1: "); Serial.println(enc1Angle);
+
+  digitalWrite(12,HIGH);
+  digitalWrite(9,LOW);
+  analogWrite(MotorRpwm,150);
 }
 
 void enc1ReadA()
