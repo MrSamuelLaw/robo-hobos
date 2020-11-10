@@ -45,15 +45,13 @@ void enc1ReadA()
   // Write your code here.
   // Remember, you are supposed to read port-B value using 'readPinFast(pinNumber)' function.
   // If this value is 0, then add 1 to 'enc1Ticks' else subtract 1 from 'enc1Ticks'.
-  
-  
-  
+
+
+
   if (readPinFast(enc1PinB) == 0) {
     --enc1Ticks;
   }
   else{
     ++enc1Ticks;
-}
-
-//Serial.print(readPinFast(enc1PinB));
+  }
 }
