@@ -58,11 +58,13 @@ class Motor{
 
   // ============================== variables ==============================
   // safe to playwith controller variables
-  float bodyA_mass{0.03190818};      // kg
-  float bodyA_izz{3.98e-06};         // kg*m^2
-  float bodyA_length{0.02162775};    // m
-  long kp{80000};                    // proportional gain
-  long kv{sqrt(kp)*2.828427};        // derivative gain
+  double bodyA_izz{3.3e-7};           // kg
+  double bodyB_length{0.02727751};    // m
+  double bodyB_mass{7.28e-3};         // kg
+  double bodyB_izz{6.39e-6};          // kg*m^2
+  double Kp{478};                     // proportional gain
+  double Kv{sqrt(Kp)*sqrt(8)};        // derivative gain
+  double K{4.5};                      // Voltage booster
 
   // pin variables
   int m_pwm_pin{0};
@@ -77,19 +79,22 @@ class Motor{
   Encoder m_encoder;
 
   // controller variables
-  double q[2] = {0, 0};  // rad
-  double q_desired{0};   // rad
-  double qdot = {0};     // rad/s
-  double U{0};           // units/s^2
-  double Tau{0};         // Nm
-  double Vemf{0};        // Volts
-  double Vs{0};          // Volts
+  double q[2] = {0, 0};      // rad
+  double q_desired{0};       // rad
+  double qdot = {0};         // rad/s
+  double U{0};               // units/s^2
+  double Tau{0};             // Nm
+  double Vemf{0};            // Volts
+  double Vs{0};              // Volts
 
   // motor/encoder constants
   int CPR{1000};
-  double  ki = (10.52 - 0.108605472*4.5)/45;
-  double kt = (0.980665/2.6666666660);
-  float R = 4.5;
+  // double ki = (10.52 - 0.108605472*4.5)/45;
+  double ki = 2.29183;
+  // double kt = (0.980665/2.6666666660);
+  double kt = 0.891514;
+  // float R = 4.5;
+  float R = 7.5;
 
   // ================================ functions ================================
 
@@ -130,24 +135,24 @@ class Motor{
   double calculate_Vs(long millis){
     // get the newest angles
     update_angles();
-    Serial.print("q1 = ");
-    Serial.println(q[1]);
+    // Serial.print(", q1 = ");
+    // Serial.println(q[1]);
 
     // calculate qdot
-    qdot = (double)(q[1] - q[0])*(1000/millis);
+    qdot = (double)(1000*(q[1] - q[0])/millis);
     // Serial.println(qdot);
 
     // calculate back emf
     Vemf = ki*qdot;
     // Serial.println(Vemf);
 
-    // calculate controller value for U
-    U = (kv*(0-qdot)) + (kp*(q_desired - q[1]));
+    // calculate U using PID controller
+    U = K*((Kv*(0-qdot)) + (Kp*(q_desired - q[1])));
     // Serial.println(U);
 
     // calculate Tau from controller value
-    Tau = ((bodyA_length*bodyA_length*bodyA_mass) + bodyA_izz)*U;
-    // Serial.println(Tau);
+    Tau = ((bodyB_length*bodyB_length*bodyB_mass) + (20736*bodyA_izz) + bodyB_izz)*U;
+    // Serial.println(Tau, 2);
 
     // calculate Vs
     Vs = (Tau*R/kt) + Vemf;
@@ -166,7 +171,7 @@ class Motor{
 
     // map the voltage
     Vs = map(Vs, 0, 12, 0, 255);
-    // Serial.println(Vs);
+    // Serial.println(Vs)
 
     return Vs;
   }
@@ -213,7 +218,7 @@ void setup(){
   );
 
   // set desired angle
-  right_motor.q_desired = 12.5;
+  right_motor.q_desired = 6;
 
   // digitalWrite(right_motor.m_brk_pin, HIGH);
 }
@@ -228,12 +233,20 @@ void setup(){
 //                                                             |_|
 
 void loop(){
-  // capture the current angle and time
+  // capture the new time
   new_time = millis();
+
+  // print out csv for Exercise 3
+  Serial.print(new_time);
+  Serial.print(",");
+  Serial.println(right_motor.q[1]);
+
+  // calculate dt
   dt = (new_time - old_time);
 
   // calculate Vs
   V = right_motor.calculate_Vs(dt);
+  // Serial.println(V);
 
   // output it to the motor
   analogWrite(right_motor.m_pwm_pin, V);
