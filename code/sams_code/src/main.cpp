@@ -58,9 +58,10 @@ class Motor{
 
   // ============================== variables ==============================
   // safe to playwith controller variables
-  float bodyA_mass{0.03190818};      // kg
-  float bodyA_izz{3.98e-06};         // kg*m^2
-  float bodyA_length{0.02162775};    // m
+  float bodyA_izz{3.3e-07};
+  float bodyB_mass{0.0325/2};      // kg
+  float bodyB_izz{2.105e-05};         // kg*m^2
+  float bodyB_length{0.02162775};    // m
   long kp{80000};                    // proportional gain
   long kv{sqrt(kp)*2.828427};        // derivative gain
 
@@ -113,8 +114,8 @@ class Motor{
   // kills the motor in the event that the probe is tripped, preventint
   // damage to the robot. Is completely optional, and should be set in the
   // setup loop of the ardino code using a lambda
-  static void probe(int probe_pin){
-    digitalWrite(probe_pin, HIGH);
+  static void probe(int brk_pin){
+    digitalWrite(brk_pin, HIGH);
   }
 
   // updates the angles to where q1 is always the most recent angle
@@ -130,8 +131,8 @@ class Motor{
   double calculate_Vs(long millis){
     // get the newest angles
     update_angles();
-    Serial.print("q1 = ");
-    Serial.println(q[1]);
+    // Serial.print("q1 = ");
+    // Serial.println(q[1]);
 
     // calculate qdot
     qdot = (double)(q[1] - q[0])*(1000/millis);
@@ -146,7 +147,7 @@ class Motor{
     // Serial.println(U);
 
     // calculate Tau from controller value
-    Tau = ((bodyA_length*bodyA_length*bodyA_mass) + bodyA_izz)*U;
+    Tau = ((bodyB_length*bodyB_length*bodyB_mass) + bodyA_izz + bodyB_izz)*U;
     // Serial.println(Tau);
 
     // calculate Vs
@@ -204,16 +205,20 @@ void setup(){
   // start the coms
   Serial.begin(9600);
 
+  pinMode(50,OUTPUT);
+  digitalWrite(50,HIGH);
+
   // setup the probe that trips if the robot is going to break something
   pinMode(2, INPUT);
   attachInterrupt(
     digitalPinToInterrupt(2),
     [](){Motor::probe(right_motor.m_brk_pin);},
     HIGH
+    
   );
-
+ 
   // set desired angle
-  right_motor.q_desired = 12.5;
+  right_motor.q_desired = 24.5;
 
   // digitalWrite(right_motor.m_brk_pin, HIGH);
 }
@@ -240,4 +245,5 @@ void loop(){
 
   // overwrite the old time
   old_time = new_time;
+  Serial.println(digitalRead(2));
 }
