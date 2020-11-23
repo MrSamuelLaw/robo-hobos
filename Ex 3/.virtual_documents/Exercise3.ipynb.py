@@ -8,8 +8,6 @@ import sympy as sm
 import sympy.physics.mechanics as me
 import matplotlib.pyplot as plt
 from IPython.display import Latex, display
-from mathtools.root_locus import *
-from mathtools.symbolic import sym2poly
 from numpy import linspace, array, pi, sqrt, polyfit, vstack, sign
 from scipy.integrate import RK45
 
@@ -115,11 +113,11 @@ show("TM", me.vlatex(TM))
 # create a dict to hold numeric values
 vals = {
     # lengths
-    bodyB.L: 0.02162775,         # m
-    bodyB.mass:   0.00728203,    # kg 
-    "bodyB_izz":  6.39e-06,      # kg*m^2
-    "bodyA_izz":  3.3e-07,       # kg*m^2
-    gear_ratio: 144,             # a.u
+    bodyB.L: 0.02162775,     # m
+    bodyB.mass: 0.00728203,  # kg 
+    "bodyB_izz": 6.39e-06,   # kg*m^2
+    "bodyA_izz": 3.3e-07,    # kg*m^2
+    gear_ratio: 144,         # a.u
 }
 
 
@@ -137,7 +135,7 @@ u
 
 
 # create the constant C1
-C1, *_ = TM.subs(vals)/q1dd  # the term that describes the 
+C1, *_ = TM.subs(vals)/q1dd  # kg*(m^2)
 C1
 
 
@@ -148,12 +146,18 @@ C2 = R/kt
 C2
 
 
-# calculate max Kp value
-V_min = 3                   # voltage required for motor to actually move based on experimentation
-CPR = 1000                  # counts per revolution
-rad_min = 2*pi/1000         # smallest detectable error 
-Kp_max = V_min/(rad_min*2)  # the 2 allows it to be +- one count from desired position
-Kp_max
+# determine the minimum voltage to get mapped to < 0.5
+def arduino_map(x, in_min, in_max, out_min, out_max):
+    return ((x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min)
+
+vmin = 0.0235
+print(arduino_map(vmin, 0, 12, 0, 255))
+
+CPR = 1000
+res = 2*pi/CPR
+print(res)
+Kp_max = vmin/(res*C2*C1)
+print(Kp_max)
 
 
 # create all the callables
@@ -161,25 +165,23 @@ simulation_parameters = {
     q1_desired: 3,
     q1d_desired: 0,
     Kp: int(Kp_max),
-    Kv: sqrt(477*8),
+    Kv: sqrt(int(Kp_max)*8),
 }
 
 
 # create controller callable
 controller_signal = sm.lambdify([q1_current, q1d_current], u.subs(simulation_parameters), modules="numpy")
-controller_signal(12, 0)
+controller_signal(3, 0)
 
 
-# create motor torque callable to emulate q1dd
-rpms = (0, 40, 50)
-taus = (0.980665, 0.4413, 0)
-slope1, intercept1 = np.polyfit(rpms[0:2], taus[0:2], 1)
-slope2, intercept2 = np.polyfit(rpms[1:], taus[1:], 1)
+# create motor torque callable to drive q1dd
+rpms = (0, 40)
+taus = (0.980665, 0.4413)
+slope, intercept = polyfit(rpms, taus, 1)
+
 def tau_motor(x):
     if rpms[0] <= x <= rpms[1]:
-        return (slope1*x) + intercept1
-    elif rpms[1] <= x <= rpms[2]:
-        return (slope2*x) + intercept2
+        return (slope*x) + intercept
     else:
         return 0
 
@@ -229,30 +231,104 @@ while True:
         break
     else:
         results = vstack([results, (simulator.t, simulator.y[0])])
+        
+# save the results to a file
+with open("joint_space_3rad.csv", "w") as f:
+    for r in results:
+        f.write(f"{r[0]},{r[1]}\n")
 
 
-plt.plot(results[:, 0], results[:, 1])
+# plot the results from the 3 second simulation and experimentation
+fig, ax = plt.subplots(figsize=(7, 5))
+with open("joint_space_3rad.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0]) for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="3 rad simulated")
+    
+with open("joint_space_3rad_actual.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0])/1000 for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="3 rad actual")
+    
+with open("joint_space_6rad.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0]) for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="6 rad simulated")
+    
+with open("joint_space_6rad_actual.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0])/1000 for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="6 rad actual")
+
+with open("joint_space_12rad.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0]) for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="12 rad simulated")
+    
+with open("joint_space_12rad_actual.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0])/1000 for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="12 rad actual")
+
+
+ax.grid()
+ax.set_title("Joint Space Results")
+ax.set_xlabel("time [s]")
+ax.set_ylabel("angle [rad]")
+ax.legend();
+
+
+# create the points to connect
+bodyB.W = bodyB.L/3
+p1 = pN.locatenew("p1", 0.5*bodyB.W*bodyB.frame.y)
+p2 = p1.locatenew("p2", bodyB.L*bodyB.frame.x)
+p3 = p2.locatenew("p3", bodyB.W*-bodyB.frame.y)
+p4 = p3.locatenew("p4", bodyB.L*-bodyB.frame.x)
+
+# turn the points into a callable
+points = [p1, p2, p3, p4, p1]
+points = [p.pos_from(pN).to_matrix(N)[0:2] for p in points]
+points = [[p.subs(vals) for p in tup] for tup in points]
+points = [[p.subs(vals) for p in tup] for tup in points]
+points_func = sm.lambdify([q1], points, modules="numpy")
+
+
+for ang in results[0::5, 1]:
+    points = points_func(ang)
+    x = [p[0] for p in points]
+    y = [p[1] for p in points]
+    plt.plot(x, y)
 plt.grid()
-plt.xlabel("time [s]")
-plt.ylabel("q1 [rad]")
-plt.title("Joint Space Controller");
+plt.title("Motion Capture Plot 3 rad")
+plt.xlabel("N.x [m]");
+plt.ylabel("N.y [m]");
 
 
-print(results[-50:])
+CPR = 1000
+res = 2*pi/CPR
+print(res)
+Kp_max = vmin/(res*C2)
+print(Kp_max)
 
 
 # create all the callables
 simulation_parameters = {
-    q1_desired: 12,
+    q1_desired: 6,
     q1d_desired: 0,
     Kp: int(Kp_max),
-    Kv: 100
+    Kv: 0.1
 }
 
 
 # create controller callable
 controller_signal = sm.lambdify([q1_current, q1d_current], u.subs(simulation_parameters), modules="numpy")
-controller_signal(12, 0)
+controller_signal(6, 0)
 
 
 # create the RK45 simulation
@@ -291,7 +367,7 @@ def model(t, x):
     return (x1d, x2d)
 
 # create the initial conditions
-simulator = RK45(model, 0, [0, 0], 3, max_step=0.05)
+simulator = RK45(model, 0, [0, 0], 3, max_step=0.1)
 results = array([0, 0])
 while True:
     try:
@@ -300,10 +376,77 @@ while True:
         break
     else:
         results = vstack([results, (simulator.t, simulator.y[0])])
+        
+# save the results to a file
+with open("PD_10.csv", "w") as f:
+    for r in results:
+        f.write(f"{r[0]},{r[1]}\n")
 
 
-plt.plot(results[:, 0], results[:, 1])
-plt.grid()
-plt.xlabel("time [s]")
-plt.ylabel("q1 [rad]")
-plt.title("PD Controller");
+# plot the results from the 3 second simulation and experimentation
+fig, ax = plt.subplots(figsize=(7, 5))
+with open("PD_10.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0]) for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="Kv=10 simulated")
+    
+with open("PD_10_actual.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0])/1000 for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="Kv=10 actual")
+    
+with open("PD_100.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0]) for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="Kv=100 simulated")
+    
+with open("PD_100_actual.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0])/1000 for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="Kv=100 actual")
+    
+with open("PD_1000.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0]) for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="Kv=1000 simulated")
+    
+with open("PD_1000_actual.csv", "r") as f:
+    res = [l.split(",") for l in f.readlines()]
+    times = [float(v[0])/1000 for v in res]
+    angles = [float(v[1]) for v in res]
+    ax.plot(times, angles, label="Kv=1000 actual")
+
+ax.grid()
+ax.set_title("PD Results")
+ax.set_xlabel("time [s]")
+ax.set_ylabel("angle [rad]")
+ax.legend();
+
+
+from mathtools.symbolic import sym2poly
+from mathtools.root_locus import *
+from numpy import linspace, cos, angle
+
+
+Kp, Kv, x1, s = sm.symbols("Kp, Kv, x1, s")
+PD = Kp + (Kv*s)
+CLTF = PD/((s**2) - ((x1)*s) + PD)
+CLTF
+num, den = sm.fraction(CLTF)
+num, den
+vals = {Kp: 1, Kv: 0.2, x1: 2.29}
+num, *_ = sym2poly(num.subs(vals), var=s)
+den, *_ = sym2poly(den.subs(vals), var=s)
+num, den
+gains = linspace(0,20,1000)
+quick_plot(num, den, gains)
+
+
+tf = transfer_function(num, den)
+res = compute_roots(tf, gains)
+[print(g, cos(angle(r[0]))) for g, r in zip(gains, res)];

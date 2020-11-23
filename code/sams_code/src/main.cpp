@@ -1,13 +1,12 @@
 #include <Arduino.h>
 #include <Encoder.h>
 
-
-//   __  __       _                _____ _
-//  |  \/  |     | |              / ____| |
-//  | \  / | ___ | |_ ___  _ __  | |    | | __ _ ___ ___
-//  | |\/| |/ _ \| __/ _ \| '__| | |    | |/ _` / __/ __|
-//  | |  | | (_) | || (_) | |    | |____| | (_| \__ \__ \
-//  |_|  |_|\___/ \__\___/|_|     \_____|_|\__,_|___/___/
+///////////////  __  __       _                _____ _                ///////////////
+/////////////// |  \/  |     | |              / ____| |               ///////////////
+/////////////// | \  / | ___ | |_ ___  _ __  | |    | | __ _ ___ ___  ///////////////
+/////////////// | |\/| |/ _ \| __/ _ \| '__| | |    | |/ _` / __/ __| ///////////////
+/////////////// | |  | | (_) | || (_) | |    | |____| | (_| \__ \__ \ ///////////////
+/////////////// |_|  |_|\___/ \__\___/|_|     \_____|_|\__,_|___/___/ ///////////////
 class Motor{
   public:
   /*
@@ -26,11 +25,10 @@ class Motor{
     encoder_dir_: Set to either 1 or -1, used to correct the reading for the angle.
                   If a counter clockwise rotation causes the encoder to read negative,
                   flip the value from -1 to 1 or 1 to -1 depending on what it is
-                  currently set to.
-  */
+                  currently set to. */
 
-  // ============================= constructor =============================
 
+  // ================== constructor ==================
   Motor(int pwm_pin, int brk_pin, int dir_pin,
           uint8_t COUNTER_CLOCKWISE_, uint8_t CLOCKWISE_,
           int enc_pin_A, int enc_pin_B, int encoder_dir_)
@@ -56,47 +54,28 @@ class Motor{
     digitalWrite(m_dir_pin, COUNTER_CLOCKWISE);
   }
 
-  // ============================== variables ==============================
-  // safe to playwith controller variables
-  double bodyA_izz{3.3e-7};           // kg
-  double bodyB_length{0.02727751};    // m
-  double bodyB_mass{7.28e-3};         // kg
-  double bodyB_izz{6.39e-6};          // kg*m^2
-  double Kp{478};                     // proportional gain
-  double Kv{sqrt(Kp)*sqrt(8)};        // derivative gain
-  double K{4.5};                      // Voltage booster
+  // ==================== variables ====================
 
   // pin variables
   int m_pwm_pin{0};
   const int m_brk_pin;
   int m_dir_pin{0};
-  int m_dir_state_pin{0};
   uint8_t CLOCKWISE{LOW};
   uint8_t COUNTER_CLOCKWISE{HIGH};
   int encoder_dir{1};
 
   // encoder variables
   Encoder m_encoder;
+  float q[2] = {0, 0};  // rad
 
-  // controller variables
-  double q[2] = {0, 0};      // rad
-  double q_desired{0};       // rad
-  double qdot = {0};         // rad/s
-  double U{0};               // units/s^2
-  double Tau{0};             // Nm
-  double Vemf{0};            // Volts
-  double Vs{0};              // Volts
+  // motor variables
+  int CPR{1000};        // count per revolution
+  float ki = 2.29183;   // V*s/rad
+  float kt = 0.891514;  // Nm*ohms/V
+  float R = 7.5;        // ohms
 
-  // motor/encoder constants
-  int CPR{1000};
-  // double ki = (10.52 - 0.108605472*4.5)/45;
-  double ki = 2.29183;
-  // double kt = (0.980665/2.6666666660);
-  double kt = 0.891514;
-  // float R = 4.5;
-  float R = 7.5;
 
-  // ================================ functions ================================
+  // ===================== functions =====================
 
   // 1 for counter clockwise, -1 for clockwise
   // same as the convection for positive angle rotations
@@ -111,15 +90,8 @@ class Motor{
   }
 
   // returns the current angle of the motor in radians
-  double angle(){
-    return (double)(encoder_dir*2*M_PI*m_encoder.read()/CPR);
-  }
-
-  // kills the motor in the event that the probe is tripped, preventint
-  // damage to the robot. Is completely optional, and should be set in the
-  // setup loop of the ardino code using a lambda
-  static void probe(int probe_pin){
-    digitalWrite(probe_pin, HIGH);
+  float angle(){
+    return (float)(encoder_dir*2*M_PI*m_encoder.read()/CPR);
   }
 
   // updates the angles to where q1 is always the most recent angle
@@ -129,34 +101,21 @@ class Motor{
     q[1] = angle();
   }
 
-  // =============================== controller ================================
+  // takes the time step in millis
+  // returns the current angular velocity in rad/s
+  float qdot(float dt){
+    return (float)(1000*(q[1] - q[0])/dt);
+  }
 
-  // implements the controller
-  double calculate_Vs(long millis){
-    // get the newest angles
-    update_angles();
-    // Serial.print(", q1 = ");
-    // Serial.println(q[1]);
+  // takes the angular velocity in rad/s
+  // returns the current emf voltage given dt in millis
+  float Vemf(float qdot) {
+    return ki*qdot;
+  }
 
-    // calculate qdot
-    qdot = (double)(1000*(q[1] - q[0])/millis);
-    // Serial.println(qdot);
-
-    // calculate back emf
-    Vemf = ki*qdot;
-    // Serial.println(Vemf);
-
-    // calculate U using PID controller
-    U = K*((Kv*(0-qdot)) + (Kp*(q_desired - q[1])));
-    // Serial.println(U);
-
-    // calculate Tau from controller value
-    Tau = ((bodyB_length*bodyB_length*bodyB_mass) + (20736*bodyA_izz) + bodyB_izz)*U;
-    // Serial.println(Tau, 2);
-
-    // calculate Vs
-    Vs = (Tau*R/kt) + Vemf;
-    // Serial.println(Vs);
+  // takes the a desired voltage to send to the motor, t
+  // transforms it, then sends the signal to the driver
+  void set_voltage(float Vs){
 
     // toggle the direction if needed
     set_direction(1);
@@ -165,92 +124,113 @@ class Motor{
       set_direction(-1);
     }
 
-    // constrain the voltage
+    // // constrain the voltage
     Vs = constrain(Vs, 0, 12);
-    // Serial.println(Vs);
 
     // map the voltage
     Vs = map(Vs, 0, 12, 0, 255);
-    // Serial.println(Vs)
 
-    return Vs;
+    // send the signal tothe pin
+    analogWrite(m_pwm_pin, Vs);
   }
-
 };
 
+////////////////////////   _____ _       _           _      //////////////////////
+////////////////////////  / ____| |     | |         | |     //////////////////////
+//////////////////////// | |  __| | ___ | |__   __ _| |___  //////////////////////
+//////////////////////// | | |_ | |/ _ \| '_ \ / _` | / __| //////////////////////
+//////////////////////// | |__| | | (_) | |_) | (_| | \__ \ //////////////////////
+////////////////////////  \_____|_|\___/|_.__/ \__,_|_|___/ //////////////////////
 
-//    _____ _       _           _
-//   / ____| |     | |         | |
-//  | |  __| | ___ | |__   __ _| |___
-//  | | |_ | |/ _ \| '_ \ / _` | / __|
-//  | |__| | | (_) | |_) | (_| | \__ \
-//   \_____|_|\___/|_.__/ \__,_|_|___/
-
-// time variables
+// timer variables
 long new_time{0};
 long old_time{0};
 long dt{0};
-float V{0};
+
 
 // define motors
 Motor right_motor(3, 9, 12, HIGH, LOW,
                   20, 21, 1);
 
-//                    _       _                _____      _
-//      /\           | |     (_)              / ____|    | |
-//     /  \   _ __ __| |_   _ _ _ __   ___   | (___   ___| |_ _   _ _ __
-//    / /\ \ | '__/ _` | | | | | '_ \ / _ \   \___ \ / _ \ __| | | | '_ \
-//   / ____ \| | | (_| | |_| | | | | | (_) |  ____) |  __/ |_| |_| | |_) |
-//  /_/    \_\_|  \__,_|\__,_|_|_| |_|\___/  |_____/ \___|\__|\__,_| .__/
-//                                                                 | |
-//                                                                 |_|
+Motor left_motor(11, 8, 13, HIGH, LOW,
+                  18, 19, 1);
+
+// gains
+float Kp{1};
+float Kv{1};
+float K{1};
+
+// hardware controls
+int button{2};
+
+//////////////////////////   _____      _                //////////////////////////
+//////////////////////////  / ____|    | |               //////////////////////////
+////////////////////////// | (___   ___| |_ _   _ _ __   //////////////////////////
+//////////////////////////  \___ \ / _ \ __| | | | '_ \  //////////////////////////
+//////////////////////////  ____) |  __/ |_| |_| | |_) | //////////////////////////
+////////////////////////// |_____/ \___|\__|\__,_| .__/  //////////////////////////
+//////////////////////////                       | |     //////////////////////////
+//////////////////////////                       |_|     //////////////////////////
 
 void setup(){
-  // start the coms
+   // start the coms
   Serial.begin(9600);
 
-  // setup the probe that trips if the robot is going to break something
-  pinMode(2, INPUT);
+  // Setup the emergency stop function
+  pinMode(button, INPUT);  // e-stop button is on pin 2
   attachInterrupt(
     digitalPinToInterrupt(2),
-    [](){Motor::probe(right_motor.m_brk_pin);},
-    HIGH
+    [](){
+      digitalWrite(right_motor.m_brk_pin, HIGH);
+      digitalWrite(left_motor.m_brk_pin, HIGH);
+    },
+    FALLING  // trigger when it starts going
   );
 
-  // set desired angle
-  right_motor.q_desired = 6;
+  // Wait for user to push the start button
+  while (digitalRead(button) != HIGH) {
+    delay(250);
+  }
 
-  // digitalWrite(right_motor.m_brk_pin, HIGH);
+  // Define the start position as in line with the N.y axis
+  right_motor.m_encoder.write(right_motor.CPR/4);
+  left_motor.m_encoder.write(left_motor.CPR/4);
 }
 
-//                    _       _               _
-//      /\           | |     (_)             | |
-//     /  \   _ __ __| |_   _ _ _ __   ___   | |     ___   ___  _ __
-//    / /\ \ | '__/ _` | | | | | '_ \ / _ \  | |    / _ \ / _ \| '_ \
-//   / ____ \| | | (_| | |_| | | | | | (_) | | |___| (_) | (_) | |_) |
-//  /_/    \_\_|  \__,_|\__,_|_|_| |_|\___/  |______\___/ \___/| .__/
-//                                                             | |
-//                                                             |_|
+/////////////////////////////  _                        /////////////////////////////
+///////////////////////////// | |                       /////////////////////////////
+///////////////////////////// | |     ___   ___  _ __   /////////////////////////////
+///////////////////////////// | |    / _ \ / _ \| '_ \  /////////////////////////////
+///////////////////////////// | |___| (_) | (_) | |_) | /////////////////////////////
+///////////////////////////// |______\___/ \___/| .__/  /////////////////////////////
+/////////////////////////////                   | |     /////////////////////////////
+/////////////////////////////                   |_|     /////////////////////////////
 
 void loop(){
+  // ================= controller ==================
+
   // capture the new time
   new_time = millis();
-
-  // print out csv for Exercise 3
-  Serial.print(new_time);
-  Serial.print(",");
-  Serial.println(right_motor.q[1]);
 
   // calculate dt
   dt = (new_time - old_time);
 
+  // get the newest angles
+  right_motor.update_angles();
+  left_motor.update_angles();
+  Serial.print("q1 = "); Serial.print(right_motor.q[1]);
+  Serial.print(", q4 = "); Serial.println(left_motor.q[1]);
+
+  // calculate controller signal
+  // ...calculations go here...
+
   // calculate Vs
-  V = right_motor.calculate_Vs(dt);
-  // Serial.println(V);
+  // ...Vs = (Tau*R/kt) + Vemf...;
 
-  // output it to the motor
-  analogWrite(right_motor.m_pwm_pin, V);
+  // output to the motors
+  // right_motor.set_voltage(Vs);
+  // left_motor.set_voltage(Vs);
 
-  // overwrite the old time
+  // // overwrite the old time
   old_time = new_time;
 }
