@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <BasicLinearAlgebra.h>
 #include <Encoder.h>
 
 ///////////////  __  __       _                _____ _                ///////////////
@@ -90,15 +91,17 @@ class Motor{
   }
 
   // returns the current angle of the motor in radians
-  float angle(){
+  float read_angle(){
     return (float)(encoder_dir*2*M_PI*m_encoder.read()/CPR);
   }
 
-  // updates the angles to where q1 is always the most recent angle
-  void update_angles(){
+  // reads the newest angle, shifts the vector,
+  // and returns the new angle
+  float update_angles(){
     // q[1] is the newest
     q[0] = q[1];
-    q[1] = angle();
+    q[1] = read_angle();
+    return q[1];
   }
 
   // takes the time step in millis
@@ -116,7 +119,6 @@ class Motor{
   // takes the a desired voltage to send to the motor, t
   // transforms it, then sends the signal to the driver
   void set_voltage(float Vs){
-
     // toggle the direction if needed
     set_direction(1);
     if (Vs < 0){
@@ -124,7 +126,7 @@ class Motor{
       set_direction(-1);
     }
 
-    // // constrain the voltage
+    // constrain the voltage
     Vs = constrain(Vs, 0, 12);
 
     // map the voltage
@@ -149,19 +151,84 @@ long dt{0};
 
 
 // define motors
-Motor right_motor(3, 9, 12, HIGH, LOW,
+Motor right_motor(3, 9, 12, LOW, HIGH,
                   20, 21, 1);
 
-Motor left_motor(11, 8, 13, HIGH, LOW,
+Motor left_motor(11, 8, 13, LOW, HIGH,
                   18, 19, 1);
 
-// gains
-float Kp{1};
-float Kv{1};
-float K{1};
+// controller variables
+float Kp{400};                      // proportional gain
+float Kv{sqrt(Kp)*sqrt(8)*1.3};     // derivative gain
+float K{2};   // constant gain
+float q_right_desired{1.30823735};  // radians
+float q_left_desired{1.81830097};   // radians
 
 // hardware controls
 int button{2};
+
+// constants
+constexpr float LA_1 {0.06095};
+constexpr float LC_1 {0.06095};
+constexpr float LB_1 {0.08128};
+constexpr float LD_1 {0.08128};
+constexpr float L {0.1016};
+constexpr float LA_COM {0.027};
+constexpr float LC_COM {0.027};
+constexpr float LB_COM {0.04};
+constexpr float LD_COM {0.04};
+constexpr float bodyA_mass {0.007};
+constexpr float bodyB_mass {0.008};
+constexpr float bodyC_mass {0.007};
+constexpr float bodyD_mass {0.008};
+constexpr float bodyA_izz {6.36e-6};
+constexpr float bodyB_izz {1.01e-5};
+constexpr float bodyC_izz {6.36e-6};
+constexpr float bodyD_izz {1.01e-5};
+constexpr float motorR_izz {3.3e-07};
+constexpr float motorL_izz {3.3e-07};
+constexpr float gr {144};
+
+
+// variable declarations
+float q1{0};
+float q2{0};
+float q4{0};
+float q5{0};
+float q1d{0};
+float q2d{0};
+float q4d{0};
+float q5d{0};
+float q1dd{0};
+float q2dd{0};
+float q4dd{0};
+float q5dd{0};
+float x{0};
+float y{0};
+float xd{0};
+float yd{0};
+float xdd{0};
+float ydd{0};
+float x_desired{0};
+float y_desired{0};
+float xd_desired{0};
+float yd_desired{0};
+float gamma{0};
+float alpha1{0};
+float alpha2{0};
+BLA::Matrix<4, 4> J;
+BLA::Matrix<4, 4> Jd;
+BLA::Matrix<4, 1> Xdd;
+BLA::Matrix<4, 1> Qd;
+BLA::Matrix<4, 1> Qdd;
+float tau1{0};
+float tau2{0};
+float Vs_right{0};
+float Vs_left{0};
+float x_des_vec[4] = {-0.0762, -0.0762, -0.0254, -0.0254};
+float y_des_vec[4] = {0.07366, 0.09906, 0.09906, 0.07366};
+int head{0};
+float eps = 0.01;
 
 //////////////////////////   _____      _                //////////////////////////
 //////////////////////////  / ____|    | |               //////////////////////////
@@ -188,13 +255,22 @@ void setup(){
   );
 
   // Wait for user to push the start button
+  Serial.println("Press and hold button to start...");
   while (digitalRead(button) != HIGH) {
-    delay(250);
+    delay(100);
   }
 
   // Define the start position as in line with the N.y axis
   right_motor.m_encoder.write(right_motor.CPR/4);
   left_motor.m_encoder.write(left_motor.CPR/4);
+
+  // Zero fill the various matricies
+  J.Fill(0);
+  Jd.Fill(0);
+
+  // Set desired x, y final position
+  x_desired = x_des_vec[head];
+  y_desired = y_des_vec[head];
 }
 
 /////////////////////////////  _                        /////////////////////////////
@@ -215,22 +291,134 @@ void loop(){
   // calculate dt
   dt = (new_time - old_time);
 
-  // get the newest angles
-  right_motor.update_angles();
-  left_motor.update_angles();
-  Serial.print("q1 = "); Serial.print(right_motor.q[1]);
-  Serial.print(", q4 = "); Serial.println(left_motor.q[1]);
+  // calculate angles
+  q1 = right_motor.update_angles();
+  q4 = left_motor.update_angles();
 
-  // calculate controller signal
-  // ...calculations go here...
+  gamma = acos((1.0/2.0)*sqrt(pow(L, 2) + 2*L*LA_1*cos(q1) - 2*L*LC_1*cos(q4)
+          + pow(LA_1, 2) - 2*LA_1*LC_1*(sin(q1)*sin(q4) + cos(q1)*cos(q4))
+          + pow(LC_1, 2))/LB_1);
 
-  // calculate Vs
+  alpha1 = acos((L*LA_1*cos(q1) + pow(LA_1, 2) - LA_1*LC_1*(sin(q1)*sin(q4)
+           + cos(q1)*cos(q4)))/(sqrt(pow(L, 2) + 2*L*LA_1*cos(q1) - 2*L*LC_1*cos(q4)
+           + pow(LA_1, 2) - 2*LA_1*LC_1*(sin(q1)*sin(q4) + cos(q1)*cos(q4))
+           + pow(LC_1, 2))*sqrt(pow(LA_1, 2))));
+
+  alpha2 = q1 - q4 - alpha1 + M_PI;
+
+  q2 = M_PI - (alpha1 + gamma);
+  q5 = M_PI + (alpha2 + gamma);
+
+  // calculate angular velocities
+  q1d = right_motor.qdot(dt);
+  q4d = left_motor.qdot(dt);
+  q2d = 0.25*(3.0*q1d*sin(-q1 + q4 + q5) - 4.0*q1d*sin(q1 + q2 - q4 - q5)
+        - 3.0*q4d*sin(q5))/sin(q1 + q2 - q4 - q5);
+  q5d = 0.25*(3.0*q1d*sin(q2) - 3.0*q4d*sin(q1 + q2 - q4)
+        - 4.0*q4d*sin(q1 + q2 - q4 - q5))/sin(q1 + q2 - q4 - q5);
+
+  // calculate the task space coordinates
+  x = LA_1*cos(q1) + LB_1*(-sin(q1)*sin(q2) + cos(q1)*cos(q2));
+  y = LA_1*sin(q1) + LB_1*(sin(q1)*cos(q2) + sin(q2)*cos(q1));
+
+  // calculate the task space velocities
+  xd = -LA_1*q1d*sin(q1) + LB_1*(q1d + q2d)*(-sin(q1)*cos(q2) - sin(q2)*cos(q1));
+  yd = LA_1*q1d*cos(q1) + LB_1*(q1d + q2d)*(-sin(q1)*sin(q2) + cos(q1)*cos(q2));
+
+  // calculate the controller signal
+  xdd = K*(Kp*(-x + x_desired) + Kv*(-xd + xd_desired));
+  ydd = K*(Kp*(-y + y_desired) + Kv*(-yd + yd_desired));
+
+  // create the jacobian
+  J(0, 0) = -LA_1*sin(q1) + LB_1*(-sin(q1)*cos(q2) - sin(q2)*cos(q1));
+  J(1, 0) = LA_1*cos(q1) + LB_1*(-sin(q1)*sin(q2) + cos(q1)*cos(q2));
+  J(0, 1) = LB_1*(-sin(q1)*cos(q2) - sin(q2)*cos(q1));
+  J(1, 1) = LB_1*(-sin(q1)*sin(q2) + cos(q1)*cos(q2));
+  J(2, 2) = -LC_1*sin(q4) + LD_1*(-sin(q4)*cos(q5) - sin(q5)*cos(q4));
+  J(3, 2) = LC_1*cos(q4) + LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5));
+  J(2, 3) = LD_1*(-sin(q4)*cos(q5) - sin(q5)*cos(q4));
+  J(3, 3) = LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5));
+
+  // create the jocobian's derivative
+  Jd(0, 0) = -LA_1*q1d*cos(q1) + LB_1*(q1d*sin(q1)*sin(q2) - q1d*cos(q1)*cos(q2)
+             + q2d*sin(q1)*sin(q2) - q2d*cos(q1)*cos(q2));
+  Jd(1, 0) = -LA_1*q1d*sin(q1) + LB_1*(-q1d*sin(q1)*cos(q2) - q1d*sin(q2)*cos(q1)
+             - q2d*sin(q1)*cos(q2) - q2d*sin(q2)*cos(q1));
+  Jd(0, 1) = LB_1*(q1d*sin(q1)*sin(q2) - q1d*cos(q1)*cos(q2) + q2d*sin(q1)*sin(q2)
+             - q2d*cos(q1)*cos(q2));
+  Jd(1, 1) = LB_1*(-q1d*sin(q1)*cos(q2) - q1d*sin(q2)*cos(q1) - q2d*sin(q1)*cos(q2)
+             - q2d*sin(q2)*cos(q1));
+  Jd(2, 2) = -LC_1*q4d*cos(q4) + LD_1*(q4d*sin(q4)*sin(q5) - q4d*cos(q4)*cos(q5)
+             + q5d*sin(q4)*sin(q5) - q5d*cos(q4)*cos(q5));
+  Jd(3, 2) = -LC_1*q4d*sin(q4) + LD_1*(-q4d*sin(q4)*cos(q5) - q4d*sin(q5)*cos(q4)
+             - q5d*sin(q4)*cos(q5) - q5d*sin(q5)*cos(q4));
+  Jd(2, 3) = LD_1*(q4d*sin(q4)*sin(q5) - q4d*cos(q4)*cos(q5) + q5d*sin(q4)*sin(q5)
+             - q5d*cos(q4)*cos(q5));
+  Jd(3, 3) = LD_1*(-q4d*sin(q4)*cos(q5) - q4d*sin(q5)*cos(q4) - q5d*sin(q4)*cos(q5)
+             - q5d*sin(q5)*cos(q4));
+
+  // calculate the desired joint accelerations
+  Xdd << xdd, ydd, xdd, ydd;
+  Qd << q1d, q2d, q4d, q5d;
+  Qdd = J.Inverse()*(Xdd - Jd*Qd);
+
+  // assign them to their own variabels
+  q1dd = Qdd(0);
+  q2dd = Qdd(1);
+  q4dd = Qdd(2);
+  q5dd = Qdd(3);
+
+  // calculate the desired torque
+  tau1 = -LA_1*LB_COM*bodyB_mass*pow(q1d, 2)*sin(q2) + LA_1*LB_COM*bodyB_mass*pow(q1d + q2d, 2)*sin(q2) - q1dd*(pow(LA_COM, 2)
+         *bodyA_mass + bodyA_izz + bodyB_izz + bodyB_mass*(pow(LA_1, 2) + 2*LA_1*LB_COM*cos(q2) + pow(LB_COM, 2)) + pow(gr, 2)
+         *motorR_izz) - q2dd*(bodyB_izz + bodyB_mass*(LA_1*LB_COM*cos(q2) + pow(LB_COM, 2))) - (LA_1*cos(q1) + LB_1*(-sin(q1)
+         *sin(q2) + cos(q1)*cos(q2)) - (-LA_1*sin(q1) + LB_1*(-sin(q1)*cos(q2) - sin(q2)*cos(q1)))*(-sin(q1)*sin(q2) + cos(q1)
+         *cos(q2))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)))*(-LC_1*LD_COM*bodyD_mass*pow(q4d, 2)*sin(q5) - q4dd*(bodyD_izz +
+         bodyD_mass*(LC_1*LD_COM*cos(q5) + pow(LD_COM, 2))) - q5dd*(pow(LD_COM, 2)*bodyD_mass + bodyD_izz))/(LD_1*(-sin(q1)*sin
+         (q2) + cos(q1)*cos(q2))*(-sin(q4)*cos(q5) - sin(q5)*cos(q4))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)) - LD_1*(-sin(q4)*sin
+         (q5) + cos(q4)*cos(q5))) - (-LA_1*sin(q1) + LB_1*(-sin(q1)*cos(q2) - sin(q2)*cos(q1)) + LD_1*(-sin(q4)*cos(q5) - sin
+         (q5)*cos(q4))*(LA_1*cos(q1) + LB_1*(-sin(q1)*sin(q2) + cos(q1)*cos(q2)) - (-LA_1*sin(q1) + LB_1*(-sin(q1)*cos(q2) -
+         sin(q2)*cos(q1)))*(-sin(q1)*sin(q2) + cos(q1)*cos(q2))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)))/(LD_1*(-sin(q1)*sin(q2)
+         + cos(q1)*cos(q2))*(-sin(q4)*cos(q5) - sin(q5)*cos(q4))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)) - LD_1*(-sin(q4)*sin(q5)
+         + cos(q4)*cos(q5))))*(-LA_1*LB_COM*bodyB_mass*pow(q1d, 2)*sin(q2) - q1dd*(bodyB_izz + bodyB_mass*(LA_1*LB_COM*cos(q2)
+         + pow(LB_COM, 2))) - q2dd*(pow(LB_COM, 2)*bodyB_mass + bodyB_izz))/(LB_1*(-sin(q1)*cos(q2) - sin(q2)*cos(q1)));
+
+  tau2 = -LC_1*LD_COM*bodyD_mass*pow(q4d, 2)*sin(q5) + LC_1*LD_COM*bodyD_mass*pow(q4d + q5d, 2)*sin(q5) - q4dd*(pow(LC_COM, 2)
+          *bodyC_mass + bodyC_izz + bodyD_izz + bodyD_mass*(pow(LC_1, 2) + 2*LC_1*LD_COM*cos(q5) + pow(LD_COM, 2)) + pow(gr, 2)
+          *motorL_izz) - q5dd*(bodyD_izz + bodyD_mass*(LC_1*LD_COM*cos(q5) + pow(LD_COM, 2))) - (-LC_1*cos(q4) - LD_1*(-sin(q4)
+          *sin(q5) + cos(q4)*cos(q5)) - (LC_1*sin(q4) - LD_1*(-sin(q4)*cos(q5) - sin(q5)*cos(q4)))*(-sin(q1)*sin(q2) + cos(q1)
+          *cos(q2))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)))*(-LC_1*LD_COM*bodyD_mass*pow(q4d, 2)*sin(q5) - q4dd*(bodyD_izz +
+          bodyD_mass*(LC_1*LD_COM*cos(q5) + pow(LD_COM, 2))) - q5dd*(pow(LD_COM, 2)*bodyD_mass + bodyD_izz))/(LD_1*(-sin(q1)*
+          sin(q2) + cos(q1)*cos(q2))*(-sin(q4)*cos(q5) - sin(q5)*cos(q4))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)) - LD_1*(-sin(q4)
+          *sin(q5) + cos(q4)*cos(q5))) - (LC_1*sin(q4) - LD_1*(-sin(q4)*cos(q5) - sin(q5)*cos(q4)) + LD_1*(-sin(q4)*cos(q5)
+          -sin(q5)*cos(q4))*(-LC_1*cos(q4) - LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5)) - (LC_1*sin(q4) - LD_1*(-sin(q4)*
+          cos(q5) - sin(q5)*cos(q4)))*(-sin(q1)*sin(q2) + cos(q1)*cos(q2))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)))/(LD_1*
+          (-sin(q1)*sin(q2) + cos(q1)*cos(q2))*(-sin(q4)*cos(q5) - sin(q5)*cos(q4))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1))
+          - LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5))))*(-LA_1*LB_COM*bodyB_mass*pow(q1d, 2)*sin(q2) - q1dd*(bodyB_izz + bodyB_mass*(LA_1*LB_COM*cos(q2) + pow(LB_COM, 2))) - q2dd*(pow(LB_COM, 2)*bodyB_mass + bodyB_izz))/(LB_1*(-sin(q1)
+          *cos(q2) - sin(q2)*cos(q1)));
+
+  // calculate Vs for the right and left motor
   // ...Vs = (Tau*R/kt) + Vemf...;
+  Vs_right = -((tau1*right_motor.R/right_motor.kt) + (right_motor.ki*q1d));
+  Vs_left = -((tau2*left_motor.R/left_motor.kt) + (left_motor.ki*q4d));
 
   // output to the motors
-  // right_motor.set_voltage(Vs);
-  // left_motor.set_voltage(Vs);
+  right_motor.set_voltage(Vs_right);
+  left_motor.set_voltage(Vs_left);
 
-  // // overwrite the old time
+  // change target if the x or y values are with in range
+  if ((fabs(x - x_desired) <= eps) && (fabs(y - y_desired) <= eps)) {
+    head += 1;
+    if (head == 4) {head = 0;}
+    x_desired = x_des_vec[head];
+    y_desired = y_des_vec[head];
+  }
+
+  // overwrite the old time
   old_time = new_time;
+
+  // print out for debugging
+  Serial.println(head);
+  // Serial.print("x= "); Serial.print(x);
+  // Serial.print(", y= "); Serial.println(y);
 }

@@ -7,7 +7,8 @@ get_ipython().run_line_magic("matplotlib", " inline")
 import sympy as sm
 import sympy.physics.mechanics as me
 from scipy.integrate import RK45
-from numpy import array, vstack, pi
+from numpy import array, vstack, pi, sqrt, arccos, sin, cos
+from math import degrees
 import matplotlib.pyplot as plt
 
 
@@ -31,6 +32,31 @@ q0, q3 = -q1*gr, -q4*gr
 u0, u3 = -u1*gr, -u4*gr
 q0d, q3d = -q1d*gr, -q4d*gr
 u0d, u3d = -u1d*gr, -u4d*gr
+
+
+# create dict for use when generating ccode
+var2sym = {
+    # positions
+    q1: sm.Symbol("q1"),
+    q2: sm.Symbol("q2"),
+    q4: sm.Symbol("q4"),
+    q5: sm.Symbol("q5"),
+    # position derivatives
+    q1d: sm.Symbol("q1d"),
+    q2d: sm.Symbol("q2d"),
+    q4d: sm.Symbol("q4d"),
+    q5d: sm.Symbol("q5d"),
+    # velocities
+    u1: sm.Symbol("u1"),
+    u2: sm.Symbol("u2"),
+    u4: sm.Symbol("u4"),
+    u5: sm.Symbol("u5"),
+    # velocity derivatives
+    u1d: sm.Symbol("u1d"),
+    u2d: sm.Symbol("u2d"),
+    u4d: sm.Symbol("u4d"),
+    u5d: sm.Symbol("u5d"),
+}
 
 
 # set up the motor bodies
@@ -160,6 +186,9 @@ Fr, Fr_star = KM.kanes_equations(bodies, loads)
 Fr.shape, Fr_star.shape
 
 
+# sm.ccode(me.msubs(Fr_star[1], var2sym))
+
+
 in2m = lambda x: x*25.4/1000
 vals = {
     # constants
@@ -191,12 +220,28 @@ vals = {
 }
 
 
+[print(k, v) for k, v in vals.items()];
+
+
 # create the position function
 pE = pN.locatenew("pE", (bodyA.L1*bodyA.frame.x) + (bodyB.L1*bodyB.frame.x))
 PNE = (pE.pos_from(pN).to_matrix(N).subs(vals))
 PNE = PNE.row_del(-1)
+# sm.ccode(me.msubs(PNE[1], var2sym))
+
+
 PNE_func = sm.lambdify([q1, q2], PNE, modules="sympy")
 PNE_func(0, 0)
+
+
+VNE = pE.pos_from(pN).dt(N).to_matrix(N)
+VNE = VNE.row_del(-1)
+# sm.ccode(me.msubs(VNE[1], var2sym))
+VNE = VNE.subs(vals)
+
+
+VNE_func = sm.lambdify([q1, q2, q1d, q2d], VNE, modules="sympy")
+VNE_func(0, 0, 1, 0)
 
 
 # create the task space controller
@@ -209,9 +254,13 @@ u = (Kv*(Xd_desired - Xd_current)) + (Kp*(X_desired - X_current))
 u
 
 
+# sm.ccode(me.msubs(u[1], var2sym))
+
+
 # get the positions
 pE_rhs = right_motor.masscenter.locatenew("pE_rhs", (bodyA.L1*bodyA.frame.x) + (bodyB.L1*bodyB.frame.x))
 pE_lhs = left_motor.masscenter.locatenew("pE_lhs", (bodyC.L1*bodyC.frame.x) + (bodyD.L1*bodyD.frame.x))
+
 # create the 2x2 matrix
 M_rhs = pE_rhs.pos_from(pN).dt(N).to_matrix(N)
 M_lhs = pE_lhs.pos_from(pN).dt(N).to_matrix(N)
@@ -220,6 +269,7 @@ M_lhs = M_lhs.subs(vals)
 M_rhs = M_rhs.row_del(-1)
 M_lhs = M_lhs.row_del(-1)
 M = sm.Matrix.vstack(M_rhs, M_lhs)
+
 # create the jacobains
 X_rhs = sm.Matrix([q1d, q2d])
 X_lhs = sm.Matrix([q4d, q5d])
@@ -235,68 +285,134 @@ J_func(1, 1, 1, 1)
 
 
 Jd = sm.diff(J, 't')
+# sm.ccode(me.msubs(Jd[3, 3], var2sym))
 Jd_func = sm.lambdify([q1, q2, q4, q5, q1d, q2d, q4d, q5d], Jd, modules="sympy")
 Jd_func(1, 1, 1, 1, 1, 1, 1, 1)
 
 
-# =======================
-# x1 = q1,    x1d = q1d
-# x2 = q2,    x2d = q2d
-# x3 = q4,    x3d = q4d
-# x4 = q5.    x4d = q5d
-# =======================
-# x5 = q1d,    x5d = q1dd
-# x6 = q2d,    x6d = q2dd
-# x7 = q4d,    x7d = q4dd
-# x8 = q5d.    x8d = q5dd
+# create length vectors
+p1 = right_motor.masscenter.locatenew("p1", bodyA.L1*bodyA.frame.x)
+p2 = left_motor.masscenter.locatenew("p2", bodyC.L1*bodyC.frame.x)
 
-# declare variables
+# calculate gamma using the law of cosines
+W = p2.pos_from(p1)
+gamma = sm.acos(W.magnitude()/(2*bodyB.L1))
+gamma
+# sm.ccode(me.msubs(gamma, var2sym))
+
+
+# substitute in numerical values
+gamma = gamma.subs(vals)
+
+# create gamma function
+gamma_func = sm.lambdify([q1, q4], gamma, modules="numpy")
+gamma_func(pi/2, pi/2)
+
+
+# create expression for alpha1
+alpha1 = sm.acos(W.dot(-p1.pos_from(right_motor.masscenter))/(W.magnitude()*p1.pos_from(right_motor.masscenter).magnitude()) )
+alpha1
+# sm.ccode(me.msubs(alpha1, var2sym))
+
+
+# sub in numbers
+alpha1 = alpha1.subs(vals)
+alpha1
+
+
+# create expression for alpha2
+alpha2 = q1 - q4 - alpha1 + sm.pi
+alpha2
+
+
+# create callables for alpha1 and alpha2
+alpha_func = sm.lambdify([q1, q4], [alpha1, alpha2], modules="numpy")
+alpha_func(pi/2, pi/2)
+
+
+M = zero.pos_from(pN).dt(N).to_matrix(N)
+M = M.subs(vals)
+sol = sm.solve([M], [q2d, q5d])
+sol
+
+
+eq1 = me.msubs(sol[q2d], var2sym)
+eq2 = me.msubs(sol[q5d], var2sym)
+# sm.ccode(eq2)
+
+
+qd_func = sm.lambdify([q1, q2, q4, q5, q1d, q4d], [sol[q2d], sol[q5d]], modules="numpy")
+qd_func(pi/2, 0.68, pi/2, -0.68, 1, 1)
+
+
+# x1 = q1,    x1d = q1d
+# x2 = q4,    x2d = q4d
+# x3 = q1d,   x3d = q1dd
+# x4 = q4d,   x4d = q4dd
+
+# declare controller
 U = u.subs(
-    {Kp: 5, Kv: 0.01, 
-     "x_desired": -in2m(1.5), "y_desired": in2m(3), 
+    {Kp: 5, Kv: 4.0, 
+     "x_desired": -in2m(1.5), "y_desired": in2m(4),
      "xd_desired": 0, "yd_desired": 0}
 )
 
-def model(t, x):
+def model_2(t, x):
     # unpack the vector
-    q1, q2, q4, q5, q1d, q2d, q4d, q5d = x
+    q1, q4, q1d, q4d = x
     
-    # calculate current position
-    X = PNE_func(q1, q2)
+    # get gamma, alpha1, and alpha2
+    gamma = gamma_func(q1, q4)
+    alpha1, alpha2 = alpha_func(q1, q4)
     
-    # calculate the current velocity
-    J = J_func(q1, q2, q4, q5)
-    Xd = J*sm.Matrix([q1d, q2d, q4d, q5d])
-   
+    # solve for q2, and q5
+    q2 = pi - (alpha1 + gamma)
+    q5 = pi + (alpha2 + gamma)
+     
+    # solve for the velocities
+    q2d, q5d = qd_func(q1, q2, q4, q5, q1d, q4d)
     
-    # plug into the controller
+    
+    # calculate point E position
+    x, y = PNE_func(q1, q2)
+    
+    # calculate the speeds
+    xd, yd = VNE_func(q1, q2, q1d, q2d)
+    
+    # calculate the controller output
     global U
-    u = U.subs({"x_current": X[0], "y_current": X[1],
-                "xd_current": Xd[0], "yd_current": Xd[1]})
+    u = U.subs({"x_current": x, "y_current": y,
+                "xd_current": xd, "yd_current": yd})
     
-    # create the Xdd vec
+    # create task space acceleration vector
     Xdd = sm.Matrix.vstack(u, u)
-  
-    # get qdd vals using jacobian
+    
+    # calculate the jacobian
+    J = J_func(q1, q2, q4, q5)
+    
+    # calculate the angular velocities
+    Xd = sm.Matrix([xd, yd, xd, yd])
+    q1d, q2d, q4d, q5d = J.inv()*Xd
+    
+    # calculate the desired accelerations
     Jd = Jd_func(q1, q2, q4, q5, q1d, q2d, q4d, q5d)
     q1dd, q2dd, q4dd, q5dd = J.inv()*(Xdd - (Jd*sm.Matrix([q1d, q2d, q4d, q5d])))
+                    
+    # assign the xdots
+    x1d = q1d
+    x2d = q4d
+    x3d = q1dd
+    x4d = q4dd
     
-    # assign the xdot values
-    x1d, x2d, x3d, x4d = q1d, q2d, q4d, q5d
-    x5d, x6d, x7d, x8d = q1dd, q2dd, q4dd, q5dd
-    
-    return x1d, x2d, x3d, x4d, x5d, x6d, x7d, x8d
+    # return the values
+    return (x1d, x2d, x3d, x4d)
 
 
 # create and run the simulator
-ic = [pi/2, 0.68, pi/2, - 0.68, # positions
-      0, 0, 0, 0]
-simulator = RK45(
-    model,
-    0,
-    ic,
-    5
-)
+ic = [pi/2, pi/2, 0, 0]
+
+simulator = RK45(model_2, 0, ic, 10)
+
 times = array([0])
 results = array(ic)
 while True:
@@ -310,22 +426,7 @@ while True:
         results = vstack([results, simulator.y])
 
 
-p1 = right_motor.masscenter.locatenew("p1", bodyA.L1*bodyA.frame.x)
-p2 = p1.locatenew("p2", bodyB.L1*bodyB.frame.x)
-p3 = left_motor.masscenter.locatenew("p3", bodyC.L1*bodyC.frame.x)
-p4 = p3.locatenew("p4", bodyD.L1*bodyD.frame.x)
-p1 = p1.pos_from(pN).to_matrix(N).row_del(-1).subs(vals)
-p2 = p2.pos_from(pN).to_matrix(N).row_del(-1).subs(vals)
-p3 = p3.pos_from(pN).to_matrix(N).row_del(-1).subs(vals)
-p4 = p4.pos_from(pN).to_matrix(N).row_del(-1).subs(vals)
-
-for i, _ in enumerate(times):
-    pa = p1.subs({q1: results[i,0]})
-    pb = p2.subs({q1: results[i,0], q2: results[i,1]})
-    pc = p3.subs({q4: results[i,2]})
-    pd = p4.subs({q4: results[i,2], q5: results[i,3]})
-    plt.plot([0, pa[0], pb[0]], [0, pa[1], pb[1]])
-    plt.plot([in2m(-4), pc[0], pd[0]], [0, pc[1], pd[1]])
+plt.plot(times, results[:, 0:2])
 plt.grid()
 plt.title("task space controller")
 plt.xlabel("N.x [m]")
