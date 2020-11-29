@@ -394,7 +394,8 @@ void loop(){
           -sin(q5)*cos(q4))*(-LC_1*cos(q4) - LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5)) - (LC_1*sin(q4) - LD_1*(-sin(q4)*
           cos(q5) - sin(q5)*cos(q4)))*(-sin(q1)*sin(q2) + cos(q1)*cos(q2))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1)))/(LD_1*
           (-sin(q1)*sin(q2) + cos(q1)*cos(q2))*(-sin(q4)*cos(q5) - sin(q5)*cos(q4))/(-sin(q1)*cos(q2) - sin(q2)*cos(q1))
-          - LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5))))*(-LA_1*LB_COM*bodyB_mass*pow(q1d, 2)*sin(q2) - q1dd*(bodyB_izz + bodyB_mass*(LA_1*LB_COM*cos(q2) + pow(LB_COM, 2))) - q2dd*(pow(LB_COM, 2)*bodyB_mass + bodyB_izz))/(LB_1*(-sin(q1)
+          - LD_1*(-sin(q4)*sin(q5) + cos(q4)*cos(q5))))*(-LA_1*LB_COM*bodyB_mass*pow(q1d, 2)*sin(q2) - q1dd*(bodyB_izz +
+          bodyB_mass*(LA_1*LB_COM*cos(q2) + pow(LB_COM, 2))) - q2dd*(pow(LB_COM, 2)*bodyB_mass + bodyB_izz))/(LB_1*(-sin(q1)
           *cos(q2) - sin(q2)*cos(q1)));
 
   // calculate Vs for the right and left motor
