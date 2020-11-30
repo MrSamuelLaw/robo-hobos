@@ -55,28 +55,7 @@ class Motor{
     digitalWrite(m_dir_pin, COUNTER_CLOCKWISE);
   }
 
-<<<<<<< HEAD
-  // ============================== variables ==============================
-  // safe to playwith controller variables
-<<<<<<< HEAD
-  float bodyA_izz{3.3e-07};
-  float bodyB_mass{0.0325/2};      // kg
-  float bodyB_izz{2.105e-05};         // kg*m^2
-  float bodyB_length{0.02162775};    // m
-  long kp{80000};                    // proportional gain
-  long kv{sqrt(kp)*2.828427};        // derivative gain
-=======
-  double bodyA_izz{3.3e-7};           // kg
-  double bodyB_length{0.02727751};    // m
-  double bodyB_mass{7.28e-3};         // kg
-  double bodyB_izz{6.39e-6};          // kg*m^2
-  double Kp{478};                     // proportional gain
-  double Kv{sqrt(Kp)*sqrt(8)};        // derivative gain
-  double K{4.5};                      // Voltage booster
->>>>>>> d347549aeab6edf2f218c8a9ff957fd26d9147ef
-=======
-  // ==================== variables ====================
->>>>>>> 4ddfb998c117c282965afb2682196b4d2d4172ff
+  // ================ internal variables ================
 
   // pin variables
   int m_pwm_pin{0};
@@ -116,68 +95,20 @@ class Motor{
     return (float)(encoder_dir*2*M_PI*m_encoder.read()/CPR);
   }
 
-<<<<<<< HEAD
-  // kills the motor in the event that the probe is tripped, preventint
-  // damage to the robot. Is completely optional, and should be set in the
-  // setup loop of the ardino code using a lambda
-  static void probe(int brk_pin){
-    digitalWrite(brk_pin, HIGH);
-  }
-
-  // updates the angles to where q1 is always the most recent angle
-  void update_angles(){
-=======
   // reads the newest angle, shifts the vector,
   // and returns the new angle
   float update_angles(){
->>>>>>> 4ddfb998c117c282965afb2682196b4d2d4172ff
     // q[1] is the newest
     q[0] = q[1];
     q[1] = read_angle();
     return q[1];
   }
 
-<<<<<<< HEAD
-  // =============================== controller ================================
-
-  // implements the controller
-  double calculate_Vs(long millis){
-    // get the newest angles
-    update_angles();
-<<<<<<< HEAD
-    // Serial.print("q1 = ");
-=======
-    // Serial.print(", q1 = ");
->>>>>>> d347549aeab6edf2f218c8a9ff957fd26d9147ef
-    // Serial.println(q[1]);
-
-    // calculate qdot
-    qdot = (double)(1000*(q[1] - q[0])/millis);
-    // Serial.println(qdot);
-
-    // calculate back emf
-    Vemf = ki*qdot;
-    // Serial.println(Vemf);
-
-    // calculate U using PID controller
-    U = K*((Kv*(0-qdot)) + (Kp*(q_desired - q[1])));
-    // Serial.println(U);
-
-    // calculate Tau from controller value
-<<<<<<< HEAD
-    Tau = ((bodyB_length*bodyB_length*bodyB_mass) + bodyA_izz + bodyB_izz)*U;
-    // Serial.println(Tau);
-=======
-    Tau = ((bodyB_length*bodyB_length*bodyB_mass) + (20736*bodyA_izz) + bodyB_izz)*U;
-    // Serial.println(Tau, 2);
->>>>>>> d347549aeab6edf2f218c8a9ff957fd26d9147ef
-=======
   // takes the time step in millis
   // returns the current angular velocity in rad/s
   float qdot(float dt){
     return (float)(1000*(q[1] - q[0])/dt);
   }
->>>>>>> 4ddfb998c117c282965afb2682196b4d2d4172ff
 
   // takes the angular velocity in rad/s
   // returns the current emf voltage given dt in millis
@@ -229,7 +160,7 @@ Motor left_motor(11, 8, 13, LOW, HIGH,
 // controller variables
 float Kp{400};                      // proportional gain
 float Kv{sqrt(Kp)*sqrt(8)*1.3};     // derivative gain
-float K{2};   // constant gain
+float K{2};                         // constant gain
 float q_right_desired{1.30823735};  // radians
 float q_left_desired{1.81830097};   // radians
 
@@ -312,26 +243,6 @@ void setup(){
    // start the coms
   Serial.begin(9600);
 
-<<<<<<< HEAD
-  pinMode(50,OUTPUT);
-  digitalWrite(50,HIGH);
-
-  // setup the probe that trips if the robot is going to break something
-  pinMode(2, INPUT);
-  attachInterrupt(
-    digitalPinToInterrupt(2),
-    [](){Motor::probe(right_motor.m_brk_pin);},
-    HIGH
-    
-  );
- 
-  // set desired angle
-<<<<<<< HEAD
-  right_motor.q_desired = 24.5;
-=======
-  right_motor.q_desired = 6;
->>>>>>> d347549aeab6edf2f218c8a9ff957fd26d9147ef
-=======
   // Setup the emergency stop function
   pinMode(button, INPUT);  // e-stop button is on pin 2
   attachInterrupt(
@@ -356,7 +267,6 @@ void setup(){
   // Zero fill the various matricies
   J.Fill(0);
   Jd.Fill(0);
->>>>>>> 4ddfb998c117c282965afb2682196b4d2d4172ff
 
   // Set desired x, y final position
   x_desired = x_des_vec[head];
@@ -507,13 +417,9 @@ void loop(){
 
   // overwrite the old time
   old_time = new_time;
-<<<<<<< HEAD
-  Serial.println(digitalRead(2));
-=======
 
   // print out for debugging
-  Serial.println(head);
-  // Serial.print("x= "); Serial.print(x);
-  // Serial.print(", y= "); Serial.println(y);
->>>>>>> 4ddfb998c117c282965afb2682196b4d2d4172ff
+  // Serial.println(head);
+  Serial.print("x= "); Serial.print(x);
+  Serial.print(", y= "); Serial.println(y);
 }

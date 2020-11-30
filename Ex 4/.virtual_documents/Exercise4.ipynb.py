@@ -186,7 +186,12 @@ Fr, Fr_star = KM.kanes_equations(bodies, loads)
 Fr.shape, Fr_star.shape
 
 
-# sm.ccode(me.msubs(Fr_star[1], var2sym))
+# create container to capture auto generated c++ code
+c_code = {}
+
+
+c_code["tau1"] = sm.ccode(me.msubs(Fr_star[0], var2sym))
+c_code["tau2"] = sm.ccode(me.msubs(Fr_star[1], var2sym))
 
 
 in2m = lambda x: x*25.4/1000
@@ -220,26 +225,28 @@ vals = {
 }
 
 
-[print(k, v) for k, v in vals.items()];
-
-
-# create the position function
+# create the position matrix
 pE = pN.locatenew("pE", (bodyA.L1*bodyA.frame.x) + (bodyB.L1*bodyB.frame.x))
-PNE = (pE.pos_from(pN).to_matrix(N).subs(vals))
+PNE = (pE.pos_from(pN).to_matrix(N))
 PNE = PNE.row_del(-1)
-# sm.ccode(me.msubs(PNE[1], var2sym))
+c_code["x_current"] = sm.ccode(me.msubs(PNE[0], var2sym))
+c_code["y_current"] = sm.ccode(me.msubs(PNE[1], var2sym))
 
 
+# create callable for the simulation
+PNE = PNE.subs(vals)
 PNE_func = sm.lambdify([q1, q2], PNE, modules="sympy")
 PNE_func(0, 0)
 
 
+# create velocity matrix
 VNE = pE.pos_from(pN).dt(N).to_matrix(N)
 VNE = VNE.row_del(-1)
-# sm.ccode(me.msubs(VNE[1], var2sym))
+c_code["xd_current"] = sm.ccode(me.msubs(VNE[0], var2sym))
+c_code["yd_current"] = sm.ccode(me.msubs(VNE[1], var2sym))
+
+
 VNE = VNE.subs(vals)
-
-
 VNE_func = sm.lambdify([q1, q2, q1d, q2d], VNE, modules="sympy")
 VNE_func(0, 0, 1, 0)
 
@@ -254,7 +261,8 @@ u = (Kv*(Xd_desired - Xd_current)) + (Kp*(X_desired - X_current))
 u
 
 
-# sm.ccode(me.msubs(u[1], var2sym))
+c_code["xdd_desired"] = sm.ccode(me.msubs(u[0], var2sym))
+c_code["ydd_desired"] = sm.ccode(me.msubs(u[1], var2sym))
 
 
 # get the positions
@@ -278,6 +286,12 @@ J_rhs = M_rhs.jacobian(X_rhs)
 J_lhs = M_lhs.jacobian(X_lhs)
 J = M.jacobian(X)
 J_rhs.shape, J_lhs.shape, J.shape
+
+
+rows, cols = J.shape
+for r in range(rows):
+    for c in range(cols):
+        c_code["J({},{})"]
 
 
 J_func = sm.lambdify([q1, q2, q4, q5], J, modules="sympy")
