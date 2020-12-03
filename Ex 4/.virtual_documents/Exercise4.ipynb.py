@@ -7,7 +7,7 @@ get_ipython().run_line_magic("matplotlib", " inline")
 import sympy as sm
 import sympy.physics.mechanics as me
 from scipy.integrate import RK45
-from numpy import array, vstack, pi, sqrt, arccos, sin, cos
+from numpy import array, vstack, pi, sqrt, arccos, sin, cos, linalg, linspace
 from math import degrees
 import matplotlib.pyplot as plt
 
@@ -188,8 +188,6 @@ Fr.shape, Fr_star.shape
 
 # create container to capture auto generated c++ code
 c_code = {}
-
-
 c_code["tau1"] = sm.ccode(me.msubs(Fr_star[0], var2sym))
 c_code["tau2"] = sm.ccode(me.msubs(Fr_star[1], var2sym))
 
@@ -288,18 +286,29 @@ J = M.jacobian(X)
 J_rhs.shape, J_lhs.shape, J.shape
 
 
+# extract the Jacobina c++ code
 rows, cols = J.shape
 for r in range(rows):
     for c in range(cols):
-        c_code["J({},{})"]
+        c_code[f"J({r},{c})"] = J[r, c]
 
 
+# create jocobain callable
 J_func = sm.lambdify([q1, q2, q4, q5], J, modules="sympy")
 J_func(1, 1, 1, 1)
 
 
+# create the jacobian derivative
 Jd = sm.diff(J, 't')
-# sm.ccode(me.msubs(Jd[3, 3], var2sym))
+
+# collect the c-code
+rows, cols = Jd.shape
+for r in range(rows):
+    for c in range(cols):
+        c_code[f"J({r},{c})"] = Jd[r, c]
+
+
+# create the jacobian derivative callable
 Jd_func = sm.lambdify([q1, q2, q4, q5, q1d, q2d, q4d, q5d], Jd, modules="sympy")
 Jd_func(1, 1, 1, 1, 1, 1, 1, 1)
 
@@ -311,8 +320,8 @@ p2 = left_motor.masscenter.locatenew("p2", bodyC.L1*bodyC.frame.x)
 # calculate gamma using the law of cosines
 W = p2.pos_from(p1)
 gamma = sm.acos(W.magnitude()/(2*bodyB.L1))
+c_code["gamma"] = sm.ccode(me.msubs(gamma, var2sym))
 gamma
-# sm.ccode(me.msubs(gamma, var2sym))
 
 
 # substitute in numerical values
@@ -325,8 +334,8 @@ gamma_func(pi/2, pi/2)
 
 # create expression for alpha1
 alpha1 = sm.acos(W.dot(-p1.pos_from(right_motor.masscenter))/(W.magnitude()*p1.pos_from(right_motor.masscenter).magnitude()) )
+c_code["alpha1"] = sm.ccode(me.msubs(alpha1, var2sym))
 alpha1
-# sm.ccode(me.msubs(alpha1, var2sym))
 
 
 # sub in numbers
@@ -336,6 +345,7 @@ alpha1
 
 # create expression for alpha2
 alpha2 = q1 - q4 - alpha1 + sm.pi
+c_code["alpha2"] = sm.ccode(me.msubs(alpha2, var2sym))
 alpha2
 
 
@@ -344,6 +354,7 @@ alpha_func = sm.lambdify([q1, q4], [alpha1, alpha2], modules="numpy")
 alpha_func(pi/2, pi/2)
 
 
+# solve for q2d and q5d using vector loop constraint
 M = zero.pos_from(pN).dt(N).to_matrix(N)
 M = M.subs(vals)
 sol = sm.solve([M], [q2d, q5d])
@@ -352,7 +363,8 @@ sol
 
 eq1 = me.msubs(sol[q2d], var2sym)
 eq2 = me.msubs(sol[q5d], var2sym)
-# sm.ccode(eq2)
+c_code["q2d"] = eq1
+c_code["q5d"] = eq2
 
 
 qd_func = sm.lambdify([q1, q2, q4, q5, q1d, q4d], [sol[q2d], sol[q5d]], modules="numpy")
@@ -364,14 +376,15 @@ qd_func(pi/2, 0.68, pi/2, -0.68, 1, 1)
 # x3 = q1d,   x3d = q1dd
 # x4 = q4d,   x4d = q4dd
 
-# declare controller
-U = u.subs(
-    {Kp: 5, Kv: 4.0, 
-     "x_desired": -in2m(1.5), "y_desired": in2m(4),
-     "xd_desired": 0, "yd_desired": 0}
-)
+# declare controller variables
+KP = 100
+KV = sqrt(KP*8)
 
-def model_2(t, x):
+# declare globals for point tracking
+X_CURRENT, Y_CURRENT = 0, 0
+X_DESIRED, Y_DESIRED = 0, 0
+
+def model(t, x):
     # unpack the vector
     q1, q4, q1d, q4d = x
     
@@ -390,13 +403,17 @@ def model_2(t, x):
     # calculate point E position
     x, y = PNE_func(q1, q2)
     
+    # assign to global namespace
+    global X_CURRENT, Y_CURRENT
+    X_CURRENT, Y_CURRENT = x, y
+    
     # calculate the speeds
     xd, yd = VNE_func(q1, q2, q1d, q2d)
     
     # calculate the controller output
-    global U
-    u = U.subs({"x_current": x, "y_current": y,
-                "xd_current": xd, "yd_current": yd})
+    global X_DESIRED, Y_DESIRED, KP, KV
+    u = (KV*(sm.Matrix([0 - xd, 0 - yd]))) + \
+        (KP*(sm.Matrix([X_DESIRED - x, Y_DESIRED - y])))
     
     # create task space acceleration vector
     Xdd = sm.Matrix.vstack(u, u)
@@ -422,26 +439,87 @@ def model_2(t, x):
     return (x1d, x2d, x3d, x4d)
 
 
-# create and run the simulator
-ic = [pi/2, pi/2, 0, 0]
-
-simulator = RK45(model_2, 0, ic, 10)
-
-times = array([0])
-results = array(ic)
-while True:
-    try:
-        simulator.step()
-    except Exception as e:
-        print(e)
-        break
-    else:
-        times = vstack([times, simulator.t])
-        results = vstack([results, simulator.y])
+# create the callable for the target point
+R, r, d = in2m(0.5), in2m(0.1), in2m(0.65)
+x_offset, y_offset = -in2m(2), in2m(4)
+xh = lambda theta: float(((R-r)*cos(theta)) + (d*cos((R-r)*(theta/r))) + x_offset)
+yh = lambda theta: float(((R-r)*sin(theta)) - (d*sin((R-r)*(theta/r))) + y_offset)
 
 
-plt.plot(times, results[:, 0:2])
+m2in = lambda x: x*1000/25.4
+thetas = linspace(0, 2*pi, 75)
+x_vals = [xh(t) for t in thetas]
+y_vals = [yh(t) for t in thetas]
+plt.plot([m2in(v) for v in x_vals], [m2in(v) for v in y_vals], '.')
 plt.grid()
-plt.title("task space controller")
+plt.title("target shape")
 plt.xlabel("N.x [m]")
 plt.ylabel("N.y [m]");
+
+
+# create the containers and error theshold
+conditions = array([pi/2, pi/2, 0, 0])
+times = array([0])
+results = array([0, 0])
+eps = 0.001
+
+
+# create the function that runs the interval
+def run_interval(theta, times, conditions, results):
+    # set up this leg of the simulation
+    simulator = RK45(model, times[0], conditions, 1, max_step = 0.1)
+    global X_DESIRED, Y_DESIRED
+    X_DESIRED = xh(theta)
+    Y_DESIRED = yh(theta)
+    
+    # run this leg of the simulation
+    while True:
+        # attempt to step
+        try:
+            simulator.step()
+        # if the solver is finished
+        except Exception as e:
+            break
+        # if the step was successful
+        else:
+            # if it's close enough to the target
+            if linalg.norm([float(X_DESIRED - X_CURRENT), float(Y_DESIRED - Y_CURRENT)]) <= eps:
+                break
+            # if its not close enough to the target
+            else:
+                times = vstack([times, simulator.t])
+                conditions = simulator.y
+                results = vstack([results, (X_CURRENT, Y_CURRENT)])
+            
+    # return this leg of the simulation
+    return theta, times, conditions, results
+
+
+# run all the intervals
+theta = 0
+while theta < 7:
+    # put in the last conditions
+    theta, times, conditions, results = run_interval(theta, times, conditions, results)
+    theta += 0.1
+
+
+x = [m2in(x) for x in results[1::, 0]]
+y = [m2in(y) for y in results[1::, 1]]
+plt.plot(x, y)
+plt.grid()
+plt.title("task space controller")
+plt.xlabel("N.x [in]")
+plt.ylabel("N.y [in]");
+
+
+# print out c_code expressions
+for key, value in c_code.items():
+    print(f"{key} = {value}\n")
+
+
+print("x_vals")
+for i, v in enumerate(x_vals[5::5], 5):
+    print(*x_vals[i-5:i],"", sep=",")
+print("y_vals")
+for i, v in enumerate(y_vals[5::5], 5):
+    print(*y_vals[i-5:i],"", sep=",")
