@@ -1,0 +1,12 @@
+{
+    "folders": [
+        {
+            "name": "control-space",
+            "path": ".."
+        },
+        {
+            "name": "joint-space",
+            "path": "../../joint_space"
+        }
+    ]
+}
